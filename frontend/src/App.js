@@ -180,11 +180,16 @@ function App() {
             >
               <button onClick={addCard}>Add Card</button>
             </div>
-            <select onChange={(e) => setSelectedCard(e.target.value)} defaultValue={cards?.[0]?.id} >
+            <select onChange={(e) => setSelectedCard(e.target.value)}  >
               {cards?.map((card) => (
+                <>
+                <option key={"test"} value={""} disabled selected  >
+                  select card
+                </option>
                 <option key={card.id} value={card.id}   >
                   {card.brand} **** **** **** {card.card.last4}
                 </option>
+                </>
               ))}
             </select>
             <input
@@ -193,7 +198,7 @@ function App() {
               placeholder="amout"
               onChange={(e) => setAmount(e.target.value)}
             />
-            <button onClick={handlePayment} disabled={cards.length === 0}>
+            <button onClick={handlePayment} disabled={cards.length === 0||!selectedCard}>
               Pay
             </button>
           </>
