@@ -1,96 +1,110 @@
+// client/src/CheckoutForm.js
+
 import React, { useEffect, useState } from "react";
-import {
-  PaymentElement,
-  useStripe,
-  useElements
-} from "@stripe/react-stripe-js";
+import { CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
+import axios from "axios";
+import "./../App.css"
 
 export default function CheckoutForm() {
   const stripe = useStripe();
   const elements = useElements();
 
+  const [customerId, setCustomerId] = useState(null);
+  const [cards, setCards] = useState([]);
+  const [selectedCard, setSelectedCard] = useState('');
+  const [amount, setAmount] = useState('');
   const [message, setMessage] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    if (!stripe) {
-      return;
+    // Check if customer data exists in localStorage
+    const storedCustomer = localStorage.getItem('customer');
+    if (storedCustomer) {
+      const { customerId, cards } = JSON.parse(storedCustomer);
+      setCustomerId(customerId);
+      setCards(cards);
     }
+  }, []);
 
-    const clientSecret = new URLSearchParams(window.location.search).get(
-      "payment_intent_client_secret"
-    );
-
-    if (!clientSecret) {
-      return;
+  const handleCreateCustomer = async () => {
+    try {
+      const response = await axios.post('http://localhost:5000/api/createCustomer');
+      const { customerId } = response.data.customer;
+      setCustomerId(customerId);
+      localStorage.setItem('customer', JSON.stringify({ customerId, cards: [] }));
+    } catch (error) {
+      console.error('Error creating customer:', error);
     }
+  };
 
-    stripe.retrievePaymentIntent(clientSecret).then(({ paymentIntent }) => {
-      switch (paymentIntent.status) {
-        case "succeeded":
-          setMessage("Payment succeeded!");
-          break;
-        case "processing":
-          setMessage("Your payment is processing.");
-          break;
-        case "requires_payment_method":
-          setMessage("Your payment was not successful, please try again.");
-          break;
-        default:
-          setMessage("Something went wrong.");
-          break;
-      }
-    });
-  }, [stripe]);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-
-    if (!stripe || !elements) {
-      // Stripe.js hasn't yet loaded.
-      // Make sure to disable form submission until Stripe.js has loaded.
-      return;
+  const handleAddCard = async () => {
+    try {
+      const cardElement = elements.getElement(CardElement);
+      const { paymentMethod } = await stripe.createPaymentMethod({
+        type: 'card',
+        card: cardElement,
+      });
+      const response = await axios.post('http://localhost:5000/api/addCard', {
+        customerId,
+        cardToken: paymentMethod.id,
+      });
+      const { card } = response.data;
+      setCards([...cards, card]);
+      localStorage.setItem('customer', JSON.stringify({ customerId, cards: [...cards, card] }));
+    } catch (error) {
+      console.error('Error adding card:', error);
     }
+  };
 
-    setIsLoading(true);
-
-    const { error } = await stripe.confirmPayment({
-      elements,
-      confirmParams: {
-        // Make sure to change this to your payment completion page
-        return_url: "http://localhost:3000",
-      },
-    });
-
-    // This point will only be reached if there is an immediate error when
-    // confirming the payment. Otherwise, your customer will be redirected to
-    // your `return_url`. For some payment methods like iDEAL, your customer will
-    // be redirected to an intermediate site first to authorize the payment, then
-    // redirected to the `return_url`.
-    if (error.type === "card_error" || error.type === "validation_error") {
-      setMessage(error.message);
-    } else {
-      setMessage("An unexpected error occurred.");
+  const handleProcessPayment = async () => {
+    try {
+      setIsLoading(true);
+      const response = await axios.post('http://localhost:5000/api/processPayment', {
+        customerId,
+        cardId: selectedCard,
+        amount,
+        currency: 'usd', // Change the currency as needed
+      });
+      console.log('Payment processed:', response.data.paymentIntent);
+      setMessage('Payment successful!');
+    } catch (error) {
+      console.error('Error processing payment:', error);
+      setMessage('Payment failed!');
     }
-
     setIsLoading(false);
   };
 
-  const paymentElementOptions = {
-    layout: "tabs"
-  }
+  const handleCardChange = (event) => {
+    setSelectedCard(event.target.value);
+  };
 
   return (
-    <form id="payment-form" onSubmit={handleSubmit}>
-
-      <PaymentElement id="payment-element" options={paymentElementOptions} />
-      <button disabled={isLoading || !stripe || !elements} id="submit">
-        <span id="button-text">
-          {isLoading ? <div className="spinner" id="spinner"></div> : "Pay now"}
-        </span>
-      </button>
-      {/* Show any error or success messages */}
-      {message && <div id="payment-message">{message}</div>}
-    </form>
+    <div>
+      {!customerId ? (
+        <button onClick={handleCreateCustomer} disabled={isLoading}>
+          Create Customer
+        </button>
+      ) : (
+        <>
+          <select value={selectedCard} onChange={handleCardChange}>
+            <option value="">Select Card</option>
+            {cards.map((card) => (
+              <option key={card.id} value={card.id}>
+                Card ending in {card.last4}
+              </option>
+            ))}
+          </select>
+          <CardElement />
+          <button onClick={handleAddCard} disabled={!stripe || isLoading}>
+            Add Card
+          </button>
+          <input type="text" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount" />
+          <button onClick={handleProcessPayment} disabled={!stripe || !selectedCard || isLoading}>
+            {isLoading ? 'Processing...' : 'Pay'}
+          </button>
+        </>
+      )}
+      {message && <div>{message}</div>}
+    </div>
   );
 }

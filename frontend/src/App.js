@@ -1,44 +1,206 @@
-import React, { useState, useEffect } from "react";
-import { loadStripe } from "@stripe/stripe-js";
-import { Elements } from "@stripe/react-stripe-js";
+import React, { useState, useEffect } from 'react';
+import {
+  CardElement,
+  Elements,
+  useStripe,
+  useElements,
+} from '@stripe/react-stripe-js';
+import { loadStripe } from '@stripe/stripe-js';
+const STRIP_PUBLISH_KEY =
+  'pk_test_51PAnPsCSBgqy4orWeEURu4ZdQ9l5lFTeZrpocJljScA0CNkvtrKq8RTjZknJASoBiW540lHY5smFldrIKaf74iH000aYkIiP9f';
 
-import "./App.css";
-import CheckoutForm from "./components/chockoutForm";
-
-// Make sure to call loadStripe outside of a component’s render to avoid
-// recreating the Stripe object on every render.
-// This is your test publishable API key.
-const stripePromise = loadStripe(`pk_test_51PAnPsCSBgqy4orWeEURu4ZdQ9l5lFTeZrpocJljScA0CNkvtrKq8RTjZknJASoBiW540lHY5smFldrIKaf74iH000aYkIiP9f`);
-
-export default function App() {
-  const [clientSecret, setClientSecret] = useState("");
+function App() {
+  const [customerId, setCustomerId] = useState(() =>
+    localStorage.getItem('customerId')
+  );
+  const [cards, setCards] = useState([]);
+  const [selectedCard, setSelectedCard] = useState(null);
+  const [amount, setAmount] = useState('');
+  const stripe = useStripe();
+  const elements = useElements();
+  const CARD_ELEMENT_OPTIONS = {
+    hidePostalCode: true, // Hides the postal code field
+    style: {
+      base: {
+        fontSize: '16px',
+        color: '#32325d',
+        '::placeholder': {
+          color: '#aab7c4',
+        },
+      },
+      invalid: {
+        color: '#fa755a',
+      },
+    },
+  };
 
   useEffect(() => {
-    // Create PaymentIntent as soon as the page loads
-    fetch("http://localhost:4242/create-payment-intent", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ items: [{ id: "xl-tshirt" }] }),
-    })
-      .then((res) => res.json())
-      .then((data) => setClientSecret(data.clientSecret));
-  }, []);
+    if (customerId) {
+      fetchCards();
+    }
+  }, [customerId]);
 
-  const appearance = {
-    theme: 'stripe',
-  };
-  const options = {
-    clientSecret,
-    appearance,
-  };
+  async function createCustomer() {
+    try {
+      const response = await fetch(
+        'http://localhost:5000/api/create-customer',
+        { method: 'POST' }
+      );
+      const data = await response.json();
+      setCustomerId(data.id);
+      localStorage.setItem('customerId', data.id); // Store customer ID in local storage
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+  async function addCard() {
+    const cardElement = elements.getElement(CardElement);
+    const { error, token } = await stripe.createToken(cardElement);
+    if (!error) {
+      try {
+        await fetch(`http://localhost:5000/api/add-card/${customerId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cardToken: token.id }),
+        });
+        fetchCards();
+      } catch (error) {
+        console.error(error);
+      }
+    } else {
+      console.error(error);
+    }
+  }
+
+  async function fetchCards() {
+    try {
+      const response = await fetch(
+        `http://localhost:5000/api/get-cards/${customerId}`
+      );
+      const data = await response.json();
+      console.log('cards', data);
+      setCards(data.cards);
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+  async function fetchPaymentIntent() {
+    try {
+      // Fetch the customer ID from localStorage
+      const customerId = localStorage.getItem('customerId');
+
+      const response = await fetch('http://localhost:5000/api/payment-intent', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          amount: amount,
+          customerId: customerId, // Pass the customer ID to the backend
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch Payment Intent');
+      }
+
+      const data = await response.json();
+      return data; // Assuming the response contains the Payment Intent details including the client secret
+    } catch (error) {
+      console.error(error);
+      throw error;
+    }
+  }
+  async function handlePayment() {
+    try {
+      const { paymentIntent } = await fetchPaymentIntent();
+      console.log({ selectedCard });
+      const { error } = await stripe.confirmCardPayment(
+        paymentIntent.client_secret,
+        {
+          payment_method: selectedCard,
+        }
+      );
+
+      if (!error) {
+        // Payment succeeded, show success message
+        showMessage('Payment succeeded');
+        console.log('Payment succeeded');
+      } else {
+        // Payment failed, show error message
+        showMessage('Payment failed. Please try again.');
+        console.error(error);
+      }
+    } catch (error) {
+      // Error occurred, show error message
+      showMessage('An error occurred. Please try again later.');
+      console.error(error);
+    }
+  }
+  function showMessage(message) {
+    // Display the message to the user (e.g., using an alert, modal, or notification)
+    alert(message); // Example: Show message using alert
+  }
 
   return (
-    <div className="App">
-      {clientSecret && (
-        <Elements options={options} stripe={stripePromise}>
-          <CheckoutForm />
-        </Elements>
-      )}
+    <div
+      style={{
+        background: 'blue',
+        width: '100%',
+        height: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <div
+        style={{
+          width: '500px',
+          background: '#ffff',
+          height: '300px',
+          display: 'flex',
+          flexDirection: 'column',
+          padding: '20px',
+        }}
+      >
+        {!customerId ? (
+          <button onClick={createCustomer}>Create Customer</button>
+        ) : (
+          <>
+            <CardElement options={CARD_ELEMENT_OPTIONS} />
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                padding: '20px',
+              }}
+            >
+              <button onClick={addCard}>Add Card</button>
+            </div>
+            <select onChange={(e) => setSelectedCard(e.target.value)} defaultValue={cards?.[0]?.id} >
+              {cards?.map((card) => (
+                <option key={card.id} value={card.id}   >
+                  {card.brand} **** **** **** {card.card.last4}
+                </option>
+              ))}
+            </select>
+            <input
+              type="number"
+              value={amount}
+              placeholder="amout"
+              onChange={(e) => setAmount(e.target.value)}
+            />
+            <button onClick={handlePayment} disabled={cards.length === 0}>
+              Pay
+            </button>
+          </>
+        )}
+      </div>
     </div>
   );
 }
+
+export default App;
