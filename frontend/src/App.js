@@ -1,13 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  CardElement,
-  Elements,
-  useStripe,
-  useElements,
-} from '@stripe/react-stripe-js';
-import { loadStripe } from '@stripe/stripe-js';
-const STRIP_PUBLISH_KEY =
-  'pk_test_51PAnPsCSBgqy4orWeEURu4ZdQ9l5lFTeZrpocJljScA0CNkvtrKq8RTjZknJASoBiW540lHY5smFldrIKaf74iH000aYkIiP9f';
+import { CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 
 function App() {
   const [customerId, setCustomerId] = useState(() =>
@@ -19,7 +11,7 @@ function App() {
   const stripe = useStripe();
   const elements = useElements();
   const CARD_ELEMENT_OPTIONS = {
-    hidePostalCode: true, // Hides the postal code field
+    hidePostalCode: true,
     style: {
       base: {
         fontSize: '16px',
@@ -48,7 +40,7 @@ function App() {
       );
       const data = await response.json();
       setCustomerId(data.id);
-      localStorage.setItem('customerId', data.id); // Store customer ID in local storage
+      localStorage.setItem('customerId', data.id);
     } catch (error) {
       console.error(error);
     }
@@ -64,6 +56,7 @@ function App() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ cardToken: token.id }),
         });
+        cardElement.clear();
         fetchCards();
       } catch (error) {
         console.error(error);
@@ -98,7 +91,7 @@ function App() {
         },
         body: JSON.stringify({
           amount: amount,
-          customerId: customerId, // Pass the customer ID to the backend
+          customerId: customerId,
         }),
       });
 
@@ -107,7 +100,7 @@ function App() {
       }
 
       const data = await response.json();
-      return data; // Assuming the response contains the Payment Intent details including the client secret
+      return data;
     } catch (error) {
       console.error(error);
       throw error;
@@ -125,23 +118,19 @@ function App() {
       );
 
       if (!error) {
-        // Payment succeeded, show success message
         showMessage('Payment succeeded');
         console.log('Payment succeeded');
       } else {
-        // Payment failed, show error message
         showMessage('Payment failed. Please try again.');
         console.error(error);
       }
     } catch (error) {
-      // Error occurred, show error message
       showMessage('An error occurred. Please try again later.');
       console.error(error);
     }
   }
   function showMessage(message) {
-    // Display the message to the user (e.g., using an alert, modal, or notification)
-    alert(message); // Example: Show message using alert
+    alert(message);
   }
 
   return (
@@ -180,15 +169,15 @@ function App() {
             >
               <button onClick={addCard}>Add Card</button>
             </div>
-            <select onChange={(e) => setSelectedCard(e.target.value)}  >
+            <select onChange={(e) => setSelectedCard(e.target.value)}>
+              <option key={'test'} value={''} disabled selected>
+                select card
+              </option>
               {cards?.map((card) => (
                 <>
-                <option key={"test"} value={""} disabled selected  >
-                  select card
-                </option>
-                <option key={card.id} value={card.id}   >
-                  {card.brand} **** **** **** {card.card.last4}
-                </option>
+                  <option key={card.id} value={card.id}>
+                    {card.brand} **** **** **** {card.card.last4}
+                  </option>
                 </>
               ))}
             </select>
@@ -198,7 +187,10 @@ function App() {
               placeholder="amout"
               onChange={(e) => setAmount(e.target.value)}
             />
-            <button onClick={handlePayment} disabled={cards.length === 0||!selectedCard}>
+            <button
+              onClick={handlePayment}
+              disabled={cards.length === 0 || !selectedCard}
+            >
               Pay
             </button>
           </>
